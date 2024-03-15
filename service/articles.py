@@ -31,7 +31,7 @@ def export_to_csv(articles, filename):
 
 if __name__ == "__main__":
     # Replace 'YOUR_TOKEN_HERE' with your actual Intercom access token
-    access_token = "dG9rOjM1NDk3ZTY0XzE0NGZfNGRmZF9hYTY1X2JjN2VlYmM2ZTc4OToxOjA="
+    access_token = "TOKEN HERE"
     all_articles = get_all_articles(access_token)
 
     # Export articles to CSV file
