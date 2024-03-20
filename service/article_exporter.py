@@ -17,6 +17,11 @@ def create_article(access_token, article_data):
         "Authorization": f"Bearer {access_token}",
         "Content-Type": "application/json"
     }
+
+    # Modify the article_data dictionary to include author_id and parent_id
+    article_data['author_id'] = 4403776  # Replace with the desired author_id
+   
+
     response = requests.post(url, headers=headers, json=article_data)
     return response.json()
 
@@ -27,12 +32,10 @@ def export_articles_to_target(source_articles, target_access_token):
             "title": article['title'],
             "description": article['description'],
             "body": article['body'],
-            "author_id": article['author_id'],
             "state": article['state'],
-            "parent_id": article['parent_id'],
             "parent_type": article['parent_type']
             
-            # Add more fields if needed
+            # Do not include author_id and parent_id here, they will be added dynamically
         }
 
         # Create article in target organization
