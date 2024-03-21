@@ -6,10 +6,10 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Load environment variables
-INTERCOM_ACCESS_TOKEN = os.getenv('INTERCOM_ACCESS_TOKEN')
+INTERCOM_ACCESS_TOKEN = os.getenv('SOURCE_INTERCOM_ACCESS_TOKEN')
 
 def list_help_centers(access_token):
-    url = "https://api.intercom.io/help_centers"
+    url = "https://api.intercom.io/help_center/help_centers"
     headers = {
         "Authorization": f"Bearer {access_token}",
         "Accept": "application/json"
