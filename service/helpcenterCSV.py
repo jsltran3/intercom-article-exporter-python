@@ -4,6 +4,7 @@ import requests
 from time import sleep
 from dotenv import load_dotenv
 import logging
+import html
 
 load_dotenv()
 SRC_INTERCOM_ACCESS_TOKEN = os.getenv('WOODPECKER_SRC_ACCESS_TOKEN')
@@ -16,97 +17,92 @@ class HelpCenterMigrator:
         self.dest_access_token = dest_access_token
         self.dest_article_auth_id = dest_article_auth_id
 
-        # URLS
-        self.list_all_help_centers_url = "https://api.intercom.io/help_center/help_centers"
-        self.list_all_collections_url = "https://api.intercom.io/help_center/collections"
-        self.list_all_articles_url = "https://api.intercom.io/articles"
-
-        # HEADERS
-        self.src_headers = {
-            "Authorization": f"Bearer {self.src_access_token}",
-            "Intercom-Version": "2.10",
-            "Accept": "application/json"
-        }
-        self.dest_headers = {
-            "Authorization": f"Bearer {self.dest_access_token}",
-            "Intercom-Version": "2.10",
-            "Accept": "application/json"
-        }
-
         # RESPONSES
-        self.get_src_help_centers_response = requests.get(self.list_all_help_centers_url, headers=self.src_headers)
-        self.get_dest_help_centers_response = requests.get(self.list_all_help_centers_url, headers=self.dest_headers)
+        self.get_src_help_centers_response, self.all_src_help_centers = self.get_all_help_centers(src_access_token)
+        self.get_dest_help_centers_response, self.all_dest_help_centers = self.get_all_help_centers(dest_access_token)
+        self.get_src_articles_response, self.all_src_articles = self.get_all_articles(src_access_token)
+        self.get_dest_articles_response, self.all_dest_articles = self.get_all_articles(dest_access_token)
 
-
-        self.get_src_collections_response = requests.get(self.list_all_collections_url, headers=self.src_headers)
-        self.get_dest_collections_response = requests.get(self.list_all_collections_url, headers=self.dest_headers)
-
-
-        self.get_src_articles_response = requests.get(self.list_all_articles_url, headers=self.src_headers)
-        self.get_dest_articles_response = requests.get(self.list_all_articles_url, headers=self.dest_headers)
-
-        # Parse JSON response of all Help Center, Collections, and Articles
-        # if (self.get_src_help_centers_response.status_code == 200 and
-        #     self.get_dest_help_centers_response.status_code == 200 and
-        #     self.get_src_collections_response.status_code == 200 and
-        #     self.get_dest_collections_response.status_code == 200 and
-        #     self.get_src_articles_response.status_code == 200 and
-        #     self.get_dest_articles_response.status_code == 200
-        # ):
-        self.all_src_help_centers = self.get_src_help_centers_response.json().get('data', [])
-        self.all_dest_help_centers = self.get_dest_help_centers_response.json().get('data', [])
-
-        self.all_src_collections = self.get_src_collections_response.json().get('data', [])
-        self.all_dest_collections = self.get_dest_collections_response.json().get('data', [])
-
-        self.all_src_articles = self.get_src_articles_response.json().get('data', [])
-        self.all_dest_articles = self.get_dest_articles_response.json().get('data', [])
-
-    def duplicate_help_centers(self):
+    def duplicate_all_help_centers(self):
         if (self.get_src_help_centers_response.status_code == 200 and
-            self.get_dest_help_centers_response.status_code == 200 and
-            self.get_src_collections_response.status_code == 200 and
-            # self.get_dest_collections_response.status_code == 200 and
-            self.get_src_articles_response.status_code == 200
-            # self.get_dest_articles_response.status_code == 200
+            self.get_dest_help_centers_response.status_code == 200
         ):
-            # Iterate through all help_centers found in destination
             for src_help_center in self.all_src_help_centers:
-                print(f"{src_help_center['display_name']}:")
-                dest_help_center = self.get_matching_dest_help_center(src_help_center['display_name'])
+                self.duplicate_help_centers_in_dest(src_help_center)
 
-                # Skip copying if the same help center doesn't exist in the destination
-                if not dest_help_center:
-                    print(f"\t- '{src_help_center['display_name']}' not found on the destination Intercom workspace. Please manually create this Help Center.")
-                    continue
-                else:
-                    print(f"\t- Matching help center {src_help_center['display_name']} found in destination Intercom workspace.")
-                    
+    def duplicate_help_centers_in_dest(self, src_help_center):
+        if (self.get_src_help_centers_response.status_code == 200 and
+            self.get_dest_help_centers_response.status_code == 200
+        ):
+            self.get_src_collections_response, self.all_src_collections = self.get_all_collections(self.src_access_token, src_help_center['id'])
+            print(f"{src_help_center['display_name']}:")
+            dest_help_center = self.get_matching_dest_help_center(src_help_center['display_name'])
 
-                # Get current top-level collections underneath the current source Help Center
-                src_top_level_collections = [collection for collection in self.all_src_collections if collection['help_center_id'] == int(src_help_center['id']) and collection['parent_id'] == None]
-                
-                # Recreate the top-level collection structure
-                print("\t- Recreating collection structure in destination Intercom workspace.")
-                for top_level_collection in src_top_level_collections:
-                    self.recreate_collection_structure_in_dest(dest_help_center, None, top_level_collection, tabs_to_print=2)
+            # Skip copying if the same help center doesn't exist in the destination
+            if not dest_help_center:
+                print(f"\t- '{src_help_center['display_name']}' not found on the destination Intercom workspace. Please manually create this Help Center.")
+                return
+            else:
+                print(f"\t- Matching help center {src_help_center['display_name']} found in destination Intercom workspace.")
+                self.get_dest_collections_response, self.all_dest_collections = self.get_all_collections(self.dest_access_token, dest_help_center['id'])
 
+            # Recreate top-level collection structure in destination
+            src_top_level_collections = [collection for collection in self.all_src_collections if collection['help_center_id'] == int(src_help_center['id']) and collection['parent_id'] == None]
+            print("\t- Recreating collection structure in destination Intercom workspace.")
+            for top_level_collection in src_top_level_collections:
+                self.recreate_collection_structure_in_dest(dest_help_center, None, top_level_collection, tabs_to_print=2)
 
-                # TODO:
-                # Re-index all of the collections in the destination
-                sleep(30)
-                # self.get_dest_collections_response = requests.get(self.list_all_collections_url, headers=self.dest_headers)
-                # self.all_dest_collections = self.get_dest_collections_response.json().get('data', [])
+            # TODO:
+            # Re-index all of the collections in the destination
+            sleep(10)
+            # self.all_dest_collections = self.get_all_collections(self.dest_access_token, dest_help_center['id'])
 
-                print("\t- Recreating articles in destination Intercom workspace.")
-                for top_level_collection in src_top_level_collections:
-                    self.recreate_articles_in_dest(dest_help_center, None, top_level_collection, tabs_to_print=2)
-                print("\n")
-            # return self.get_src_help_centers_response.json().get('data', [])
+            print("\t- Recreating articles in destination Intercom workspace.")
+            for top_level_collection in src_top_level_collections:
+                self.recreate_articles_in_dest(dest_help_center, None, top_level_collection, tabs_to_print=2)
+            print("\n")
             return []
-        else:
+        
+        if self.get_src_help_centers_response.status_code != 200 :
             print(f"Error fetching source help centers: {self.get_src_help_centers_response.status_code} - {self.get_src_help_centers_response.json()}")
-            return []
+        if self.get_dest_help_centers_response.status_code != 200:
+            print(f"Error fetching destination help centers: {self.get_dest_help_centers_response.status_code} - {self.get_dest_help_centers_response.json()}")
+        return []
+
+    def get_all_help_centers(self, access_token):
+        url = "https://api.intercom.io/help_center/help_centers"
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Intercom-Version": "2.10",
+            "Accept": "application/json"
+        }
+        response = requests.get(url, headers)
+        help_centers = response.json().get('data', [])
+
+        return response, help_centers
+
+    def get_all_collections(self, access_token, help_center_id):
+        url = f"https://api.intercom.io/help_center/collections?help_center_id={help_center_id}"
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Intercom-Version": "2.10",
+            "Accept": "application/json"
+        }
+        response = requests.get(url, headers)
+        collections = response.json().get('data', [])
+
+        return response, collections
+    
+    def get_all_articles(self, access_token):
+        url = "https://api.intercom.io/articles"
+        headers = {
+        "Intercom-Version": "2.10",
+        "Authorization": f"Bearer {access_token}"
+        }
+        response = requests.get(url, headers=headers)
+        articles = response.json().get('data', [])
+
+        return response, articles
 
     def get_matching_dest_help_center(self, src_help_center_name):
         """Returns the destination help center object with the matching help center name"""
@@ -120,7 +116,7 @@ class HelpCenterMigrator:
         for collection in self.all_dest_collections:
             if (collection['help_center_id'] == int(dest_help_center_id) and 
                 collection['parent_id'] == dest_parent_id and
-                collection['name'] == src_collection_name
+                html.unescape(collection['name']) == html.unescape(src_collection_name)
             ):
                 return collection
         return None
@@ -135,13 +131,13 @@ class HelpCenterMigrator:
         dest_collection = self.get_matching_dest_collection(dest_help_center['id'], dest_parent_id, src_curr_collection['name'])
 
         if not dest_collection:
-            print(f"{tabs_str}- Source collection '{src_curr_collection['name']}' not found under parent destination collection.")
+            print(f"{tabs_str}- Source collection '{html.unescape(src_curr_collection['name'])}' not found under parent destination collection.")
             dest_collection = self.create_collection_copy_in_dest(dest_help_center['id'], dest_parent_id, src_curr_collection, tabs_to_print+1)
             if not dest_collection:
                 return
             self.all_dest_collections.append(dest_collection)
         else:
-            print(f"{tabs_str}- Matching collection '{src_curr_collection['name']}' found in destination Intercom workspace.")
+            print(f"{tabs_str}- Matching collection '{html.unescape(src_curr_collection['name'])}' found in destination Intercom workspace.")
         dest_parent_id = dest_collection['id']
 
         # 2. At the current src_collection, check if there are any collections whos parent_id is the current top_level collection
@@ -151,30 +147,29 @@ class HelpCenterMigrator:
         for collection in src_nested_collections:
             self.recreate_collection_structure_in_dest(dest_help_center, dest_collection['id'], collection, tabs_to_print+1)
 
-
     def recreate_articles_in_dest(self, dest_help_center, dest_parent_collection_id, src_curr_collection, tabs_to_print):
         # 1. Fetch matching destination collection
         collections_tabs_str = '\t' * tabs_to_print
         dest_collection = self.get_matching_dest_collection(dest_help_center['id'], dest_parent_collection_id, src_curr_collection['name'])
 
         if not dest_collection:
-            print(f"{collections_tabs_str}- Source collection '{src_curr_collection['name']}' not found under parent destination collection.")
+            print(f"{collections_tabs_str}- Source collection '{html.unescape(src_curr_collection['name'])}' not found under parent destination collection.")
             print(f"{collections_tabs_str}\t- Will not create copy of articles since parent container is missing.")
             return
         else:
-            print(f"{collections_tabs_str}- Matching collection '{src_curr_collection['name']}' found in destination Intercom workspace.")
+            print(f"{collections_tabs_str}- Matching collection '{html.unescape(src_curr_collection['name'])}' found in destination Intercom workspace.")
         dest_parent_collection_id = dest_collection['id']
 
         # 2. Copy articles into this same level directory
         articles_tab_str = '\t' * (tabs_to_print + 1)
         dest_articles = [article for article in self.all_dest_articles if article['parent_id'] == int(dest_parent_collection_id)]
-        dest_article_titles = [article['title'] for article in dest_articles]
+        dest_article_titles = [html.unescape(article['title']) for article in dest_articles]
         src_articles = [article for article in self.all_src_articles if article['parent_id'] == int(src_curr_collection['id'])]
 
         for src_article in src_articles:
             # Skip if the article already exists
-            if src_article['title'] in dest_article_titles:
-                print(f"{articles_tab_str}- Matching article '{src_article['title']}' found in current destination directory. Will not make another copy.")
+            if html.unescape(src_article['title']) in dest_article_titles:
+                print(f"{articles_tab_str}- Matching article '{html.unescape(src_article['title'])}' found in current destination directory. Will not make another copy.")
                 continue
             else:
                 created_article = self.create_article_copy_in_dest(dest_parent_collection_id, src_article, tabs_to_print+1)
@@ -193,7 +188,7 @@ class HelpCenterMigrator:
         """Creates a collection in the destination Intercom workspace with the same name and structure of the source collection."""
         url = "https://api.intercom.io/help_center/collections"
         payload = {
-            "name": src_collection['name'],
+            "name": html.unescape(src_collection['name']),
             "description": src_collection["description"],
             "parent_id": dest_parent_id,
             "help_center_id": dest_help_center_id
@@ -213,12 +208,11 @@ class HelpCenterMigrator:
         else:
             print(f"{tabs_str}- Error creating copy of collection: {response.status_code} - {response.json()}")
 
-
     def create_article_copy_in_dest(self, dest_parent_id, src_article, tabs_to_print) -> None:
         """Creates an article in the destination Intercom workspace with the same content of the source article."""
         url = "https://api.intercom.io/articles"
         payload = {
-            "title": src_article["title"],
+            "title": html.unescape(src_article["title"]),
             "description": src_article["description"],
             "body": src_article["body"],
             "author_id": self.dest_article_auth_id,
@@ -253,4 +247,4 @@ if __name__ == "__main__":
     migrator = HelpCenterMigrator(SRC_INTERCOM_ACCESS_TOKEN, DEST_INTERCOM_ACCESS_TOKEN, DEST_AUTHOR_ID)
 
     if SRC_INTERCOM_ACCESS_TOKEN:
-        migrator.duplicate_help_centers()
+        migrator.duplicate_all_help_centers()
