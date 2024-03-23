@@ -32,6 +32,7 @@ class HelpCenterMigrator:
     def duplicate_help_center_in_dest(self, src_help_center):
         if (self.get_src_help_centers_response.status_code == 200 and
             self.get_dest_help_centers_response.status_code == 200
+            # src_help_center['display_name'] != None
         ):
             print(f"{src_help_center['display_name']}:")
 
@@ -111,12 +112,12 @@ class HelpCenterMigrator:
 
     def get_matching_dest_collection(self, dest_help_center_id, dest_parent_id, src_collection_name):
         """Returns the destination collection object with the matching collection name"""
-        for collection in self.all_dest_collections:
-            if (collection['help_center_id'] == int(dest_help_center_id) and 
-                collection['parent_id'] == dest_parent_id and
-                html.unescape(collection['name']) == html.unescape(src_collection_name)
+        for dest_collection in self.all_dest_collections:
+            if (dest_collection['help_center_id'] == int(dest_help_center_id) and 
+                dest_collection['parent_id'] == dest_parent_id and
+                dest_collection['name'] == (src_collection_name)
             ):
-                return collection
+                return dest_collection
         return None
 
     def recreate_collection_structure_in_dest(self, dest_help_center, dest_parent_id, src_curr_collection, tabs_to_print):
@@ -124,9 +125,13 @@ class HelpCenterMigrator:
         If the 'dest_parent_id' is defined, this method will create a nested collection underneath the collection with 'parent_id'
         """
         tabs_str = '\t' * tabs_to_print
+        # Check if the collection name is already decoded
+        unescaped_name = src_curr_collection['name']
+        if "&" in unescaped_name and not any(entity in unescaped_name for entity in ["&amp;", "&lt;", "&gt;", "&quot;", "&#39;"]):
+            unescaped_name = html.unescape(unescaped_name)
 
         # 1. Fetch matching destination collection or create one if it doesn't exist
-        dest_collection = self.get_matching_dest_collection(dest_help_center['id'], dest_parent_id, src_curr_collection['name'])
+        dest_collection = self.get_matching_dest_collection(dest_help_center['id'], dest_parent_id, unescaped_name)
 
         if not dest_collection:
             print(f"{tabs_str}- Source collection '{html.unescape(src_curr_collection['name'])}' not found under parent destination collection.")
@@ -180,8 +185,10 @@ class HelpCenterMigrator:
     def create_collection_copy_in_dest(self, dest_help_center_id, dest_parent_id, src_collection, tabs_to_print):
         """Creates a collection in the destination Intercom workspace with the same name and structure of the source collection."""
         url = "https://api.intercom.io/help_center/collections"
+        unescaped_name = html.unescape(src_collection['name'])
+
         payload = {
-            "name": html.unescape(src_collection['name']),
+            "name": unescaped_name,
             "description": src_collection["description"],
             "parent_id": dest_parent_id,
             "help_center_id": dest_help_center_id
@@ -193,19 +200,28 @@ class HelpCenterMigrator:
         }
 
         response = requests.post(url, json=payload, headers=headers)
+        request_id = response.headers.get('X-Request-Id')
         tabs_str = '\t' * tabs_to_print
 
         if response.status_code == 200:
             print(f"{tabs_str}- Copy of collection created successfully.")
+            print(f"{tabs_str}- Request ID: {request_id}")
             return response.json()
         else:
             print(f"{tabs_str}- Error creating copy of collection: {response.status_code} - {response.json()}")
+            print(f"{tabs_str}- Request ID: {request_id}")
 
     def create_article_copy_in_dest(self, dest_parent_id, src_article, tabs_to_print) -> None:
         """Creates an article in the destination Intercom workspace with the same content of the source article."""
         url = "https://api.intercom.io/articles"
+
+        # Check if the article title is already decoded
+        unescaped_title = src_article["title"]
+        if "&" in unescaped_title and not any(entity in unescaped_title for entity in ["&amp;", "&lt;", "&gt;", "&quot;", "&#39;"]):
+            unescaped_title = html.unescape(unescaped_title)
+
         payload = {
-            "title": html.unescape(src_article["title"]),
+            "title": unescaped_title,
             "description": src_article["description"],
             "body": src_article["body"],
             "author_id": self.dest_article_auth_id,
@@ -220,14 +236,18 @@ class HelpCenterMigrator:
         }
 
         response = requests.post(url, json=payload, headers=headers)
+        request_id = response.headers.get('X-Request-Id')
         tabs_str = '\t' * tabs_to_print
         
         if response.status_code == 200:
             created_article = response.json()
             print(f"{tabs_str}- Copy of article '{created_article['title']}' created successfully.")
+            print(f"{tabs_str}- Request ID: {request_id}")
             return created_article
         else:
             print(f"{tabs_str}- Error creating copy of article: {response.status_code} - {response.json()}")
+            print(f"{tabs_str}- Request ID: {request_id}")
+
 
     def export_to_csv(self, data, filename):
         with open(filename, 'w', newline='', encoding='utf-8') as csvfile:
