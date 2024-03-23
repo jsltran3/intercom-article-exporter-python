@@ -27,17 +27,16 @@ class HelpCenterMigrator:
             self.get_dest_help_centers_response.status_code == 200
         ):
             for src_help_center in self.all_src_help_centers:
-                self.duplicate_help_centers_in_dest(src_help_center)
+                self.duplicate_help_center_in_dest(src_help_center)
 
-    def duplicate_help_centers_in_dest(self, src_help_center):
+    def duplicate_help_center_in_dest(self, src_help_center):
         if (self.get_src_help_centers_response.status_code == 200 and
             self.get_dest_help_centers_response.status_code == 200
         ):
-            self.get_src_collections_response, self.all_src_collections = self.get_all_collections(self.src_access_token, src_help_center['id'])
             print(f"{src_help_center['display_name']}:")
-            dest_help_center = self.get_matching_dest_help_center(src_help_center['display_name'])
 
             # Skip copying if the same help center doesn't exist in the destination
+            dest_help_center = self.get_matching_dest_help_center(src_help_center['display_name'])
             if not dest_help_center:
                 print(f"\t- '{src_help_center['display_name']}' not found on the destination Intercom workspace. Please manually create this Help Center.")
                 return
@@ -46,15 +45,15 @@ class HelpCenterMigrator:
                 self.get_dest_collections_response, self.all_dest_collections = self.get_all_collections(self.dest_access_token, dest_help_center['id'])
 
             # Recreate top-level collection structure in destination
+            self.get_src_collections_response, self.all_src_collections = self.get_all_collections(self.src_access_token, src_help_center['id'])
             src_top_level_collections = [collection for collection in self.all_src_collections if collection['help_center_id'] == int(src_help_center['id']) and collection['parent_id'] == None]
             print("\t- Recreating collection structure in destination Intercom workspace.")
             for top_level_collection in src_top_level_collections:
                 self.recreate_collection_structure_in_dest(dest_help_center, None, top_level_collection, tabs_to_print=2)
 
-            # TODO:
             # Re-index all of the collections in the destination
             sleep(10)
-            # self.all_dest_collections = self.get_all_collections(self.dest_access_token, dest_help_center['id'])
+            self.get_dest_collections_response, self.all_dest_collections = self.get_all_collections(self.dest_access_token, dest_help_center['id'])
 
             print("\t- Recreating articles in destination Intercom workspace.")
             for top_level_collection in src_top_level_collections:
@@ -134,7 +133,6 @@ class HelpCenterMigrator:
             dest_collection = self.create_collection_copy_in_dest(dest_help_center['id'], dest_parent_id, src_curr_collection, tabs_to_print+1)
             if not dest_collection:
                 return
-            self.all_dest_collections.append(dest_collection)
         else:
             print(f"{tabs_str}- Matching collection '{html.unescape(src_curr_collection['name'])}' found in destination Intercom workspace.")
         dest_parent_id = dest_collection['id']
@@ -171,11 +169,7 @@ class HelpCenterMigrator:
                 print(f"{articles_tab_str}- Matching article '{html.unescape(src_article['title'])}' found in current destination directory. Will not make another copy.")
                 continue
             else:
-                created_article = self.create_article_copy_in_dest(dest_parent_collection_id, src_article, tabs_to_print+1)
-                
-                if created_article:
-                    self.all_dest_articles.append(created_article)
-                pass
+                self.create_article_copy_in_dest(dest_parent_collection_id, src_article, tabs_to_print+1)
         
         # 3. Recurse into sub-directory
         src_nested_collections = [collection for collection in self.all_src_collections if collection['parent_id'] == src_curr_collection['id']]
