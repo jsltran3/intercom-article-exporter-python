@@ -17,7 +17,6 @@ class HelpCenterMigrator:
         self.dest_access_token = dest_access_token
         self.dest_article_auth_id = dest_article_auth_id
 
-        # RESPONSES
         self.get_src_help_centers_response, self.all_src_help_centers = self.get_all_help_centers(src_access_token)
         self.get_dest_help_centers_response, self.all_dest_help_centers = self.get_all_help_centers(dest_access_token)
         self.get_src_articles_response, self.all_src_articles = self.get_all_articles(src_access_token)
@@ -76,7 +75,7 @@ class HelpCenterMigrator:
             "Intercom-Version": "2.10",
             "Accept": "application/json"
         }
-        response = requests.get(url, headers)
+        response = requests.get(url, headers=headers)
         help_centers = response.json().get('data', [])
 
         return response, help_centers
@@ -88,7 +87,7 @@ class HelpCenterMigrator:
             "Intercom-Version": "2.10",
             "Accept": "application/json"
         }
-        response = requests.get(url, headers)
+        response = requests.get(url, headers=headers)
         collections = response.json().get('data', [])
 
         return response, collections
@@ -246,5 +245,5 @@ class HelpCenterMigrator:
 if __name__ == "__main__":
     migrator = HelpCenterMigrator(SRC_INTERCOM_ACCESS_TOKEN, DEST_INTERCOM_ACCESS_TOKEN, DEST_AUTHOR_ID)
 
-    if SRC_INTERCOM_ACCESS_TOKEN:
+    if SRC_INTERCOM_ACCESS_TOKEN and DEST_INTERCOM_ACCESS_TOKEN:
         migrator.duplicate_all_help_centers()
