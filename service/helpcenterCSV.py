@@ -7,7 +7,7 @@ import logging
 import html
 
 load_dotenv()
-SRC_INTERCOM_ACCESS_TOKEN = os.getenv('WOODPECKER_SRC_ACCESS_TOKEN')
+SRC_INTERCOM_ACCESS_TOKEN = os.getenv('DOCKETWISE_SRC_ACCESS_TOKEN')
 DEST_INTERCOM_ACCESS_TOKEN = os.getenv('AFFINIPAY_DEST_TEST_ACCESS_TOKEN')
 DEST_AUTHOR_ID = os.getenv('AFFINIPAY_DEST_TEST_AUTHOR_ID')
 
@@ -31,8 +31,8 @@ class HelpCenterMigrator:
 
     def duplicate_help_center_in_dest(self, src_help_center):
         if (self.get_src_help_centers_response.status_code == 200 and
-            self.get_dest_help_centers_response.status_code == 200
-            # src_help_center['display_name'] != None
+            self.get_dest_help_centers_response.status_code == 200 and
+            src_help_center['display_name'] != None
         ):
             print(f"{src_help_center['display_name']}:")
 
@@ -49,16 +49,16 @@ class HelpCenterMigrator:
             self.get_src_collections_response, self.all_src_collections = self.get_all_collections(self.src_access_token, src_help_center['id'])
             src_top_level_collections = [collection for collection in self.all_src_collections if collection['help_center_id'] == int(src_help_center['id']) and collection['parent_id'] == None]
             print("\t- Recreating collection structure in destination Intercom workspace.")
-            for top_level_collection in src_top_level_collections:
-                self.recreate_collection_structure_in_dest(dest_help_center, None, top_level_collection, tabs_to_print=2)
+            for src_top_level_collection in src_top_level_collections:
+                self.recreate_collection_structure_in_dest(dest_help_center, None, src_top_level_collection, tabs_to_print=2)
 
             # Re-index all of the collections in the destination
-            sleep(10)
+            sleep(15)
             self.get_dest_collections_response, self.all_dest_collections = self.get_all_collections(self.dest_access_token, dest_help_center['id'])
 
             print("\t- Recreating articles in destination Intercom workspace.")
-            for top_level_collection in src_top_level_collections:
-                self.recreate_articles_in_dest(dest_help_center, None, top_level_collection, tabs_to_print=2)
+            for src_top_level_collection in src_top_level_collections:
+                self.recreate_articles_in_dest(dest_help_center, None, src_top_level_collection, tabs_to_print=2)
             print("\n")
             return []
         
@@ -81,27 +81,59 @@ class HelpCenterMigrator:
         return response, help_centers
 
     def get_all_collections(self, access_token, help_center_id):
+        all_data = []
+        page = 1
+        total_pages = 1  # Start with 1 to enter the loop
+        params = {'page': page}
+
         url = f"https://api.intercom.io/help_center/collections?help_center_id={help_center_id}"
         headers = {
             "Authorization": f"Bearer {access_token}",
             "Intercom-Version": "2.10",
             "Accept": "application/json"
         }
-        response = requests.get(url, headers=headers)
-        collections = response.json().get('data', [])
 
-        return response, collections
+        while page <= total_pages:
+            params['page'] = page
+            response = requests.get(url, headers=headers, params=params)
+
+            if response.status_code == 200:
+                data = response.json()
+                all_data.extend(data['data'])
+                total_pages = data['pages']['total_pages']
+                page += 1
+            else:
+                print(f"Error: {response.status_code}")
+                break
+
+        return response, all_data
     
     def get_all_articles(self, access_token):
+        all_data = []
+        page = 1
+        total_pages = 1  # Start with 1 to enter the loop
+        params = {'page': page}
+
         url = "https://api.intercom.io/articles"
         headers = {
-        "Intercom-Version": "2.10",
-        "Authorization": f"Bearer {access_token}"
+            "Intercom-Version": "2.10",
+            "Authorization": f"Bearer {access_token}"
         }
-        response = requests.get(url, headers=headers)
-        articles = response.json().get('data', [])
 
-        return response, articles
+        while page <= total_pages:
+            params['page'] = page
+            response = requests.get(url, headers=headers, params=params)
+
+            if response.status_code == 200:
+                data = response.json()
+                all_data.extend(data['data'])
+                total_pages = data['pages']['total_pages']
+                page += 1
+            else:
+                print(f"Error: {response.status_code}")
+                break
+
+        return response, all_data
 
     def get_matching_dest_help_center(self, src_help_center_name):
         """Returns the destination help center object with the matching help center name"""
@@ -191,7 +223,9 @@ class HelpCenterMigrator:
             "name": unescaped_name,
             "description": src_collection["description"],
             "parent_id": dest_parent_id,
-            "help_center_id": dest_help_center_id
+            "help_center_id": dest_help_center_id,
+            "icon": src_collection["icon"],
+            "order": src_collection["order"]
         }
         headers = {
             "Content-Type": "application/json",
@@ -247,7 +281,6 @@ class HelpCenterMigrator:
         else:
             print(f"{tabs_str}- Error creating copy of article: {response.status_code} - {response.json()}")
             print(f"{tabs_str}- Request ID: {request_id}")
-
 
     def export_to_csv(self, data, filename):
         with open(filename, 'w', newline='', encoding='utf-8') as csvfile:
