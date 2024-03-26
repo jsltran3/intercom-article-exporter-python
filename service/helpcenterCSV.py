@@ -7,7 +7,7 @@ import logging
 import html
 
 load_dotenv()
-SRC_INTERCOM_ACCESS_TOKEN = os.getenv('WOODPECKER_SRC_ACCESS_TOKEN')
+SRC_INTERCOM_ACCESS_TOKEN = os.getenv('DOCKETWISE_SRC_ACCESS_TOKEN')
 DEST_INTERCOM_ACCESS_TOKEN = os.getenv('AFFINIPAY_DEST_TEST_ACCESS_TOKEN')
 DEST_AUTHOR_ID = os.getenv('AFFINIPAY_DEST_TEST_AUTHOR_ID')
 
@@ -50,20 +50,20 @@ class HelpCenterMigrator:
             src_top_level_collections = [collection for collection in self.all_src_collections if collection['help_center_id'] == int(src_help_center['id']) and collection['parent_id'] == None]
             print("\t- Recreating collection structure in destination Intercom workspace.")
             for src_top_level_collection in src_top_level_collections:
-                self.recreate_collection_structure_in_dest(dest_help_center, None, src_top_level_collection, tabs_to_print=2)
+                self.recreate_all_collections_in_dest(dest_help_center, None, src_top_level_collection, tabs_to_print=2)
 
             # Re-index all destination collections, then recreate all articles in dest
             self.get_dest_collections_response, self.all_dest_collections = self.get_all_collections(self.dest_access_token, dest_help_center['id'], pre_sleep=10)
             print("\t- Recreating articles in destination Intercom workspace.")
             for src_top_level_collection in src_top_level_collections:
-                self.recreate_articles_in_dest(dest_help_center, None, src_top_level_collection, tabs_to_print=2)
+                self.recreate_all_articles_in_dest(dest_help_center, None, src_top_level_collection, tabs_to_print=2)
             print("\n")
 
             # Re-index all destination collections, then update all collections in the dest to respect the correct icons
             self.get_dest_collections_response, self.all_dest_collections = self.get_all_collections(self.dest_access_token, dest_help_center['id'], pre_sleep=10)
             print("\t- Updating collection icons in destination to match source collections.")
             for src_top_level_collection in src_top_level_collections:
-                self.update_collection_icons_in_dest(dest_help_center, None, src_top_level_collection, tabs_to_print=2)
+                self.update_all_collection_icons_in_dest(dest_help_center, None, src_top_level_collection, tabs_to_print=2)
             return []
         
         if self.get_src_help_centers_response.status_code != 200 :
@@ -159,7 +159,7 @@ class HelpCenterMigrator:
                 return dest_collection
         return None
 
-    def recreate_collection_structure_in_dest(self, dest_help_center, dest_parent_id, src_curr_collection, tabs_to_print):
+    def recreate_all_collections_in_dest(self, dest_help_center, dest_parent_id, src_curr_collection, tabs_to_print):
         """Recreates the collection structure in the destination Intercom workspace.
         If the 'dest_parent_id' is defined, this method will create a nested collection underneath the collection with 'parent_id'
         """
@@ -186,9 +186,9 @@ class HelpCenterMigrator:
 
         # 3. Recursively create sub-directories
         for collection in src_nested_collections:
-            self.recreate_collection_structure_in_dest(dest_help_center, dest_collection['id'], collection, tabs_to_print+1)
+            self.recreate_all_collections_in_dest(dest_help_center, dest_collection['id'], collection, tabs_to_print+1)
 
-    def recreate_articles_in_dest(self, dest_help_center, dest_parent_collection_id, src_curr_collection, tabs_to_print):
+    def recreate_all_articles_in_dest(self, dest_help_center, dest_parent_collection_id, src_curr_collection, tabs_to_print):
         # 1. Fetch matching destination collection
         collections_tabs_str = '\t' * tabs_to_print
         dest_collection = self.get_matching_dest_collection(dest_help_center['id'], dest_parent_collection_id, src_curr_collection['name'])
@@ -219,9 +219,9 @@ class HelpCenterMigrator:
         src_nested_collections = [collection for collection in self.all_src_collections if collection['parent_id'] == src_curr_collection['id']]
 
         for src_collection in src_nested_collections:
-            self.recreate_articles_in_dest(dest_help_center, dest_parent_collection_id, src_collection, tabs_to_print+1)
+            self.recreate_all_articles_in_dest(dest_help_center, dest_parent_collection_id, src_collection, tabs_to_print+1)
 
-    def update_collection_icons_in_dest(self, dest_help_center, dest_parent_collection_id, src_curr_collection, tabs_to_print):
+    def update_all_collection_icons_in_dest(self, dest_help_center, dest_parent_collection_id, src_curr_collection, tabs_to_print):
         """Updates the collection structure in the destination Intercom workspace.
         If the 'dest_parent_id' is defined, this method will create a nested collection underneath the collection with 'parent_id'
         """
@@ -249,7 +249,7 @@ class HelpCenterMigrator:
 
         # 3. Recursively create sub-directories
         for collection in src_nested_collections:
-            self.update_collection_icons_in_dest(dest_help_center, dest_collection['id'], collection, tabs_to_print+1)
+            self.update_all_collection_icons_in_dest(dest_help_center, dest_collection['id'], collection, tabs_to_print+1)
 
     def update_dest_icon_to_source(self, dest_collection, src_collection, tabs_to_print):
         url = f"https://api.intercom.io/help_center/collections/{dest_collection['id']}"
